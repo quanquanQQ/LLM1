@@ -2440,14 +2440,31 @@
     },
     {
       "cell_type": "code",
-      "execution_count": null,
+      "execution_count": 38,
       "id": "b7b83e10-5720-45e7-ac5e-369417ca846b",
       "metadata": {
         "id": "b7b83e10-5720-45e7-ac5e-369417ca846b"
       },
       "outputs": [],
       "source": [
-        "# 计算分类损失\n"
+        "# 计算分类损失\n",
+        "def calc_loss_loader(data_loader,model,device,num_batches=None):\n",
+        "  total_loss=0.\n",
+        "  if len(data_loader)==0:\n",
+        "    return float(\"nan\")\n",
+        "  elif num_batches is None:\n",
+        "    num_batches+len(data_loader)\n",
+        "  else:\n",
+        "    num_batches=min(num_batches,len(data_loader))\n",
+        "  for i,(input_batch,target_batch) in enumerate(data_loader):\n",
+        "    if i<num_batches:\n",
+        "      loss=calc_loss_batch(\n",
+        "          input_batch,target_batch,model,device\n",
+        "      )\n",
+        "      total_loss+=loss.item()\n",
+        "    else:\n",
+        "      break\n",
+        "  return total_loss/num_batches"
       ]
     },
     {
@@ -2462,12 +2479,26 @@
     },
     {
       "cell_type": "code",
-      "execution_count": null,
+      "execution_count": 39,
       "id": "f6f00e53-5beb-4e64-b147-f26fd481c6ff",
       "metadata": {
-        "id": "f6f00e53-5beb-4e64-b147-f26fd481c6ff"
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "f6f00e53-5beb-4e64-b147-f26fd481c6ff",
+        "outputId": "8c54c854-9034-42a0-fd60-5d95f9ce1278"
       },
-      "outputs": [],
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Training loss: 2.453\n",
+            "Validation loss: 2.583\n",
+            "Test loss: 2.322\n"
+          ]
+        }
+      ],
       "source": [
         "with torch.no_grad(): # Disable gradient tracking for efficiency because we are not training, yet\n",
         "    train_loss = calc_loss_loader(train_loader, model, device, num_batches=5)\n",
@@ -2525,50 +2556,43 @@
     },
     {
       "cell_type": "code",
-      "execution_count": null,
+      "execution_count": 47,
       "id": "Csbr60to50FL",
       "metadata": {
         "id": "Csbr60to50FL"
       },
       "outputs": [],
       "source": [
-        "# Overall the same as `train_model_simple` in chapter 5\n",
+        "# 微调模型进行垃圾消息分类\n",
         "def train_classifier_simple(model, train_loader, val_loader, optimizer, device, num_epochs,\n",
         "                            eval_freq, eval_iter):\n",
-        "    # Initialize lists to track losses and examples seen\n",
-        "    train_losses, val_losses, train_accs, val_accs = [], [], [], []\n",
-        "    examples_seen, global_step = 0, -1\n",
-        "\n",
-        "    # Main training loop\n",
-        "    for epoch in range(num_epochs):\n",
-        "        model.train()  # Set model to training mode\n",
-        "\n",
-        "        for input_batch, target_batch in train_loader:\n",
-        "            optimizer.zero_grad() # Reset loss gradients from previous batch iteration\n",
-        "            loss = calc_loss_batch(input_batch, target_batch, model, device)\n",
-        "            loss.backward() # Calculate loss gradients\n",
-        "            optimizer.step() # Update model weights using loss gradients\n",
-        "            examples_seen += input_batch.shape[0] # New: track examples instead of tokens\n",
-        "            global_step += 1\n",
-        "\n",
-        "            # Optional evaluation step\n",
-        "            if global_step % eval_freq == 0:\n",
-        "                train_loss, val_loss = evaluate_model(\n",
+        "  train_losses,val_losses,train_accs,val_accs=[],[],[],[]\n",
+        "  examples_seen,global_step=0,-1\n",
+        "  for epoch in range(num_epochs):#主循环训练\n",
+        "    model.train()\n",
+        "    for input_batch,target_batch in train_loader:\n",
+        "      optimizer.zero_grad()#重置上一批次迭代的损失梯度\n",
+        "      loss=calc_loss_batch(input_batch,target_batch,model,device)\n",
+        "      loss.backward()#前置传播计算损失\n",
+        "      optimizer.step()#使用损失梯度更新模型权重\n",
+        "      examples_seen+=input_batch.shape[0] #跟踪样本而不是词元\n",
+        "      global_step+=1\n",
+        "      # 可选的评估步骤\n",
+        "      if global_step % eval_freq == 0:\n",
+        "          train_loss, val_loss = evaluate_model(\n",
         "                    model, train_loader, val_loader, device, eval_iter)\n",
-        "                train_losses.append(train_loss)\n",
-        "                val_losses.append(val_loss)\n",
-        "                print(f\"Ep {epoch+1} (Step {global_step:06d}): \"\n",
+        "          train_losses.append(train_loss)\n",
+        "          val_losses.append(val_loss)\n",
+        "          print(f\"Ep {epoch+1} (Step {global_step:06d}): \"\n",
         "                      f\"Train loss {train_loss:.3f}, Val loss {val_loss:.3f}\")\n",
         "\n",
-        "        # Calculate accuracy after each epoch\n",
-        "        train_accuracy = calc_accuracy_loader(train_loader, model, device, num_batches=eval_iter)\n",
-        "        val_accuracy = calc_accuracy_loader(val_loader, model, device, num_batches=eval_iter)\n",
-        "        print(f\"Training accuracy: {train_accuracy*100:.2f}% | \", end=\"\")\n",
-        "        print(f\"Validation accuracy: {val_accuracy*100:.2f}%\")\n",
-        "        train_accs.append(train_accuracy)\n",
-        "        val_accs.append(val_accuracy)\n",
-        "\n",
-        "    return train_losses, val_losses, train_accs, val_accs, examples_seen"
+        "    train_accuracy=calc_accuracy_loader(train_loader,model,device,num_batches=eval_iter)\n",
+        "    val_accuracy = calc_accuracy_loader(val_loader, model, device, num_batches=eval_iter)\n",
+        "    print(f\"Training accuracy: {train_accuracy*100:.2f}% | \", end=\"\")\n",
+        "    print(f\"Validation accuracy: {val_accuracy*100:.2f}%\")\n",
+        "    train_accs.append(train_accuracy)\n",
+        "    val_accs.append(val_accuracy)\n",
+        "  return train_losses, val_losses, train_accs, val_accs, examples_seen\n"
       ]
     },
     {
@@ -2583,7 +2607,7 @@
     },
     {
       "cell_type": "code",
-      "execution_count": null,
+      "execution_count": 48,
       "id": "bcc7bc04-6aa6-4516-a147-460e2f466eab",
       "metadata": {
         "id": "bcc7bc04-6aa6-4516-a147-460e2f466eab"
@@ -2615,9 +2639,26 @@
       "execution_count": null,
       "id": "X7kU3aAj7vTJ",
       "metadata": {
-        "id": "X7kU3aAj7vTJ"
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "X7kU3aAj7vTJ",
+        "outputId": "f195b5f8-e234-4b63-aa2c-4d980ba7dea0"
       },
-      "outputs": [],
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "Ep 1 (Step 000000): Train loss 1.798, Val loss 1.997\n",
+            "Ep 1 (Step 000050): Train loss 0.614, Val loss 0.636\n",
+            "Ep 1 (Step 000100): Train loss 0.517, Val loss 0.551\n",
+            "Training accuracy: 70.00% | Validation accuracy: 72.50%\n",
+            "Ep 2 (Step 000150): Train loss 0.567, Val loss 0.487\n",
+            "Ep 2 (Step 000200): Train loss 0.418, Val loss 0.393\n"
+          ]
+        }
+      ],
       "source": [
         "import time\n",
         "\n",
@@ -2627,7 +2668,8 @@
         "\n",
         "optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=0.1)\n",
         "\n",
-        "num_epochs = 5\n",
+        "num_epochs = 5#控制训练轮数\n",
+        "#eval_iter验证时使用的批次数量。\n",
         "train_losses, val_losses, train_accs, val_accs, examples_seen = train_classifier_simple(\n",
         "    model, train_loader, val_loader, optimizer, device,\n",
         "    num_epochs=num_epochs, eval_freq=50, eval_iter=5,\n",
